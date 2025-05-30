@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>WebSocket 聊天示例</title>
+  <style>
+    body {
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    #messages {
+      height: 300px;
+      border: 1px solid #ccc;
+      margin-bottom: 10px;
+      padding: 10px;
+      overflow-y: auto;
+    }
+
+    #messageInput {
+      width: 80%;
+      padding: 5px;
+    }
+
+    button {
+      padding: 5px 15px;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>WebSocket 聊天室</h1>
+  <div id="messages"></div>
+  <input type="text" id="messageInput" placeholder="输入消息...">
+  <button onclick="sendMessage()">发送</button>
+
+  <script>
+    // 创建 WebSocket 连接
+    let ws;
+    let reconnectAttempts = 0; // 重连次数
+    const maxReconnectAttempts = 5; // 最大重连次数
+    const reconnectInterval = 3000; // 3秒重连一次
+
+    function connect() {
+      ws = new WebSocket('ws://localhost:8080');
+
+      // 当连接建立时
+      ws.onopen = function () {
+        console.log('已连接到服务器');
+        addMessage('系统', '已连接到服务器');
+        reconnectAttempts = 0; // 重置重连次数
+      };
+
+      // 当收到消息时
+      ws.onmessage = function (event) {
+        // 将 Blob 转换为字符串
+        if (event.data instanceof Blob) {
+          event.data.text().then(text => {
+            try {
+              const messageData = JSON.parse(text);
+              addMessage(`用户 ${messageData.uid}`, messageData.message, messageData.timestamp);
+            } catch (e) {
+              addMessage('其他用户', text);
+            }
+          });
+        } else {
+          try {
+            const messageData = JSON.parse(event.data);
+            addMessage(`用户 ${messageData.uid}`, messageData.message, messageData.timestamp);
+          } catch (e) {
+            addMessage('其他用户', event.data);
+          }
+        }
+      };
+
+      // 当连接关闭时
+      ws.onclose = function () {
+        console.log('连接已关闭');
+        addMessage('系统', '连接已关闭');
+        
+        // 尝试重连
+        if (reconnectAttempts < maxReconnectAttempts) {
+          reconnectAttempts++;
+          addMessage('系统', `正在尝试重新连接... (${reconnectAttempts}/${maxReconnectAttempts})`);
+          setTimeout(connect, reconnectInterval);
+        } else {
+          addMessage('系统', '重连次数已达上限，请刷新页面重试');
+        }
+      };
+
+      // 当发生错误时
+      ws.onerror = function (error) {
+        console.error('WebSocket 错误:', error);
+        addMessage('系统', '连接发生错误');
+      };
+    }
+
+    // 初始化连接
+    connect();
+
+    // 发送消息
+    function sendMessage() {
+      if (ws.readyState !== WebSocket.OPEN) {
+        addMessage('系统', '连接未就绪，请稍后再试');
+        return;
+      }
+
+      const input = document.getElementById('messageInput');
+      const message = input.value;
+      if (message) {
+        ws.send(message);
+        addMessage('我', message);
+        input.value = '';
+      }
+    }
+
+    /** 添加消息到聊天窗口 */
+    function addMessage(sender, message, timestamp) {
+      const messagesDiv = document.getElementById('messages');
+      const messageElement = document.createElement('div');
+      const timeStr = timestamp ? new Date(timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
+      messageElement.textContent = `[${timeStr}] ${sender}: ${message}`;
+      messagesDiv.appendChild(messageElement);
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    // 按回车键发送消息
+    document.getElementById('messageInput').addEventListener('keypress', function (e) {
+      if (e.key === 'Enter') {
+        sendMessage();
+      }
+    });
+  </script>
+</body>
+
+</html>
